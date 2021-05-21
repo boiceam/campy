@@ -6,7 +6,8 @@
 #include <Adafruit_NeoPixel.h>
 
 #define LED_PIN          0
-#define LED_COUNT        20
+#define LED_COUNT_ALL    20
+#define LED_COUNT        10
 #define LED_BRIGHTNESS   50
 
 // Low power mode put the device to sleep between LED updates to conserve energy
@@ -15,17 +16,39 @@
 #define LOW_POWER        0
 
 // Define the update period of the display
-#define LOOP_DELAY_MS    100
+#define LOOP_DELAY_MS    33
 
-#define MAX_PATTERN      2
-#define PATTERN_TIME     5000 // ms
+#define SHOW_ROTATION_DURATION     5000 // ms
 
 // Declare the NeoPixel strip object
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip(LED_COUNT_ALL, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 uint16_t loop_count = 0;
-uint8_t pattern = 0;
 unsigned long last_pattern_start = 0;
+
+// Declare shows
+
+uint32_t Show_Bounce_Up_And_Down(long time_ms, size_t light_index) {
+  uint8_t on_light = abs((LED_COUNT - 1) - (time_ms / 65) % (LED_COUNT * 2 - 1));
+  if (light_index == on_light) {
+    return strip.Color(255, 255, 255);
+  } else {
+    return strip.Color(0, 0, 0);
+  }
+}
+
+uint32_t Show_A(long current_time_ms, size_t light_index) {
+  return GetWheelColor(light_index);
+}
+
+// ----------
+
+uint32_t (*SHOWS[]) (long current_time_ms, size_t light_index) = {
+  Show_A,
+  Show_Bounce_Up_And_Down,
+};
+size_t SHOW_COUNT = sizeof(SHOWS) / sizeof(SHOWS[0]);
+
 
 void setup() {
   // Turn off the built-in status LED to save power
@@ -44,53 +67,36 @@ void setup() {
   strip.show();
 
   last_pattern_start = millis();
-  pattern = 0;
 }
 
 void loop() {
-  unsigned long active_counter = 0;
-
   // Get number of milliseconds passed since the Arduino board began running the current program.
   // This number will overflow after approximately 50 days.
   unsigned long current_time_ms = millis();
 
-  // move through patterns based on time
-  if (current_time_ms > (last_pattern_start + PATTERN_TIME))
-  {
-    pattern++;
-    if (pattern > MAX_PATTERN)
-    {
-      pattern = 0;
-    }
-    last_pattern_start = current_time_ms;
-  }
+  unsigned long show_index = (current_time_ms / SHOW_ROTATION_DURATION) % SHOW_COUNT;
 
-  // update the color of the pixels in the buffer
+  // Update the color of the pixels in the buffer
   for (size_t i = 0; i < strip.numPixels(); i++) {
-    if (pattern == 0) {
-      strip.setPixelColor(i, GetWheelColor(((i * 256 / strip.numPixels()) + loop_count) & 255));
-    } else if (pattern == 1) {
-      strip.setPixelColor(i, strip.Color(loop_count, 0, 0));
-    } else if (pattern == 2) {
-      strip.setPixelColor(i, GetWheelColor(loop_count));
+    // Show the same show on both sides, so pass in the mirrored version if i to the show
+    uint32_t light_index = i % LED_COUNT;
+    if (i >= LED_COUNT) {
+      light_index = LED_COUNT - light_index - 1;
     }
+    uint32_t color = (*SHOWS[show_index])(current_time_ms, light_index);
+    strip.setPixelColor(i, color);
   }
 
   // send the color update to the LEDs
   strip.show();
 
   // manage our loop counter used for some patterns
-  loop_count++;
-  if (loop_count == 256) {
-    loop_count = 0;
-  }
-
   // delay between updates
-#if LOW_POWER
-  Watchdog.sleep(LOOP_DELAY_MS);
-#else
-  delay(LOOP_DELAY_MS);
-#endif
+  #if LOW_POWER
+    Watchdog.sleep(LOOP_DELAY_MS);
+  #else
+    delay(LOOP_DELAY_MS);
+  #endif
 }
 
 // Input a value 0 to 255 to get a color value.
