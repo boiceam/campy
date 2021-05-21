@@ -8,7 +8,8 @@
 #define LED_PIN          0
 #define LED_COUNT_ALL    20
 #define LED_COUNT        10
-#define LED_BRIGHTNESS   50
+#define LED_BRIGHTNESS   10
+#define PI        3.14
 
 // Low power mode put the device to sleep between LED updates to conserve energy
 // When in low power mode programming mode must be entered using the boot pads on the device
@@ -18,8 +19,8 @@
 // Define the update period of the display
 #define LOOP_DELAY_MS    33
 
-#define SHOW_ROTATION_DURATION     5000 // ms
-#define SHOW_TRANSITION_DURATION     500 // ms
+#define SHOW_ROTATION_DURATION     12000 // ms
+#define SHOW_TRANSITION_DURATION     1000 // ms
 
 // Declare the NeoPixel strip object
 Adafruit_NeoPixel strip(LED_COUNT_ALL, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -30,16 +31,29 @@ unsigned long last_pattern_start = 0;
 // Declare shows
 
 uint32_t Show_Bounce_Up_And_Down(long time_ms, size_t light_index) {
-  uint8_t on_light = abs((LED_COUNT - 1) - (time_ms / 65) % (LED_COUNT * 2 - 1));
-  if (light_index == on_light) {
-    return strip.Color(255, 255, 255);
-  } else {
-    return strip.Color(0, 0, 0);
-  }
+  float t1 = (float)(time_ms % 3000) / 3000;
+  float t = (float)(time_ms % 10000) / 10000;
+  float t2 = easeInOutQuint(abs(t * 2 - 1));
+
+  float on_light = abs(t2 * LED_COUNT * 2 - LED_COUNT - 2);
+  float dist_from_on_light = abs((int16_t)light_index - on_light);
+  uint8_t val = max(255 - dist_from_on_light * 120, 0);
+  return strip.Color(val, 0, val);
+}
+
+
+uint32_t Show_Bounce_Up_And_Down_With_Flicker(long time_ms, size_t light_index) {
+  uint32_t color = Show_Bounce_Up_And_Down(time_ms, light_index);
+  uint16_t rA = (color >> 16) & 0x000000FF;
+  uint16_t gA = (color >> 8) & 0x000000FF;
+  uint16_t bA = (color >> 0) & 0x000000FF;
+
+  uint8_t n = abs(256 - (time_ms % 2500) / 2500. * 512 / 50);
+  return strip.Color(rA * n, gA * n, bA * n);
 }
 
 uint32_t Show_Bounce_Up_And_Down_Rainbow(long time_ms, size_t light_index) {
-  uint8_t on_light = abs((LED_COUNT - 1) - (time_ms / 65) % (LED_COUNT * 2 - 1));
+  uint8_t on_light = abs((LED_COUNT - 1) - (time_ms / 120) % (LED_COUNT * 2 - 1));
   if (light_index == on_light) {
     return GetWheelColor((time_ms / 25 + light_index * 2) % (256));
   } else {
@@ -53,7 +67,7 @@ uint32_t Show_Rainbow_Cycle(long time_ms, size_t light_index) {
 
 uint32_t Show_Pulse(long time_ms, size_t light_index) {
   uint8_t n = abs(256 - (time_ms % 2500) / 2500. * 512);
-  return strip.Color(n, n, n);
+  return strip.Color(n, 0, 0);
 }
 
 uint32_t Show_Red(long time_ms, size_t light_index) {
@@ -73,6 +87,7 @@ uint32_t Show_White(long time_ms, size_t light_index) {
 uint32_t (*SHOWS[]) (long time_ms, size_t light_index) = {
   Show_Rainbow_Cycle,
   Show_Bounce_Up_And_Down,
+  Show_Bounce_Up_And_Down_With_Flicker,
   Show_Pulse,
   Show_Bounce_Up_And_Down_Rainbow,
 };
@@ -107,7 +122,7 @@ void loop() {
   float show_transition_fraction = min(1.,
     max(0, ((int32_t)(current_time_ms % SHOW_ROTATION_DURATION) - (SHOW_ROTATION_DURATION - SHOW_TRANSITION_DURATION))) / (float)SHOW_TRANSITION_DURATION
   );
-  Serial.println("show_index: " + String(show_index) + ", fraction..." + String(show_transition_fraction));
+  // Serial.println("show_index: " + String(show_index) + ", fraction..." + String(show_transition_fraction));
 
   // Update the color of the pixels in the buffer
   for (size_t i = 0; i < strip.numPixels(); i++) {
@@ -164,4 +179,8 @@ uint32_t interpolate(uint32_t colA, uint32_t colorB, uint8_t percent) {
    (gA * 255 * inverse + gB * 255 * percent) / (255*255),
    (bA * 255 * inverse + bB * 255 * percent) / (255*255)
   );
+}
+ 
+float easeInOutQuint(float x) {
+  return -(cos(PI * x) - 1) / 2;
 }
