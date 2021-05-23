@@ -22,6 +22,14 @@
 #define SHOW_ROTATION_DURATION     12000 // ms
 #define SHOW_TRANSITION_DURATION     1000 // ms
 
+//
+// Sleep schedule
+//
+#define SLEEP_DELAY_MS          (10 * 1000) // ms
+#define SLEEP_ON_DURATION       (10 * 60 * 60 * 1000) // ms
+#define SLEEP_DAY_DURATION      (24 * 60 * 60 * 1000) // ms
+
+
 // Declare the NeoPixel strip object
 Adafruit_NeoPixel strip(LED_COUNT_ALL, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -30,20 +38,29 @@ unsigned long last_pattern_start = 0;
 
 // Declare shows
 
-uint32_t Show_Bounce_Up_And_Down(long time_ms, size_t light_index) {
-  float t1 = (float)(time_ms % 3000) / 3000;
-  float t = (float)(time_ms % 10000) / 10000;
-  float t2 = easeInOutQuint(abs(t * 2 - 1));
+uint32_t Show_Rainbow_Bouncing_Dot(long time_ms, size_t light_index) {
+  float colorT = (float)(time_ms % 30000) / 30000;
+  float t = (float)(time_ms % 2500) / 2500;
+  float t2 = easeInOutQuint(t);
 
-  float on_light = abs(t2 * LED_COUNT * 2 - LED_COUNT - 2);
-  float dist_from_on_light = abs((int16_t)light_index - on_light);
-  uint8_t val = max(255 - dist_from_on_light * 120, 0);
-  return strip.Color(val, 0, val);
+  float on_light = abs(t2 * (LED_COUNT + 1 ) * 2 - (LED_COUNT + 1));
+  float dist_from_on_light = ((float)light_index - on_light);
+
+  if (t >= 0.5) dist_from_on_light *= -1;
+  if (dist_from_on_light < 0) return strip.Color(0, 0, 0);
+
+  uint32_t color = GetWheelColor(colorT * 255);
+  uint16_t rA = (color >> 16) & 0x000000FF;
+  uint16_t gA = (color >> 8) & 0x000000FF;
+  uint16_t bA = (color >> 0) & 0x000000FF;
+
+  float val = min(1, max(1 - dist_from_on_light * 0.4, 0));
+  return strip.Color(rA * val, gA * val, bA * val);
 }
 
 
-uint32_t Show_Bounce_Up_And_Down_With_Flicker(long time_ms, size_t light_index) {
-  uint32_t color = Show_Bounce_Up_And_Down(time_ms, light_index);
+uint32_t Show_Flicker(long time_ms, size_t light_index) {
+  uint32_t color = Show_Pulse(time_ms, light_index);
   uint16_t rA = (color >> 16) & 0x000000FF;
   uint16_t gA = (color >> 8) & 0x000000FF;
   uint16_t bA = (color >> 0) & 0x000000FF;
@@ -85,11 +102,12 @@ uint32_t Show_White(long time_ms, size_t light_index) {
 // ----------
 
 uint32_t (*SHOWS[]) (long time_ms, size_t light_index) = {
-  Show_Rainbow_Cycle,
-  Show_Bounce_Up_And_Down,
-  Show_Bounce_Up_And_Down_With_Flicker,
-  Show_Pulse,
-  Show_Bounce_Up_And_Down_Rainbow,
+  Show_Rainbow_Bouncing_Dot,
+  // Show_Pulse,
+  // Show_Rainbow_Cycle,
+  // Show_Bounce_Up_And_Down_With_Flicker,
+  // Show_Flicker,
+  // Show_Bounce_Up_And_Down_Rainbow,
 };
 size_t SHOW_COUNT = sizeof(SHOWS) / sizeof(SHOWS[0]);
 
@@ -118,6 +136,18 @@ void loop() {
   // This number will overflow after approximately 50 days.
   unsigned long current_time_ms = millis();
 
+  // Run the light show for SLEEP_ON_DURATION, then sleep until SLEEP_DAY_DURATION
+  unsigned long day_time_ms = current_time_ms % SLEEP_DAY_DURATION;
+  bool show_should_run = day_time_ms <= SLEEP_ON_DURATION;
+  
+  if (!show_should_run) {
+    // Serial.println("Campy is sleeping until the next day");
+    strip.clear();
+    strip.show();
+    sleepFor(SLEEP_DELAY_MS);
+    return;
+  }
+
   unsigned long show_index = (current_time_ms / SHOW_ROTATION_DURATION) % SHOW_COUNT;
   float show_transition_fraction = min(1.,
     max(0, ((int32_t)(current_time_ms % SHOW_ROTATION_DURATION) - (SHOW_ROTATION_DURATION - SHOW_TRANSITION_DURATION))) / (float)SHOW_TRANSITION_DURATION
@@ -141,12 +171,15 @@ void loop() {
   // send the color update to the LEDs
   strip.show();
 
-  // manage our loop counter used for some patterns
-  // delay between updates
+  sleepFor(LOOP_DELAY_MS);
+}
+
+// delay between updates
+void sleepFor(long sleep_time) {
   #if LOW_POWER
-    Watchdog.sleep(LOOP_DELAY_MS);
+    Watchdog.sleep(sleep_time);
   #else
-    delay(LOOP_DELAY_MS);
+    delay(sleep_time);
   #endif
 }
 
