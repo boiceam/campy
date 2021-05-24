@@ -10,18 +10,20 @@
 #define LED_COUNT        10
 #define LED_BRIGHTNESS   100
 
-#define COLOR_BREAKDOWN_R(color) ((color >> 16) & 0x000000FF)
+#define COLOR_SLICE_R(color) ((color >> 16) & 0x000000FF)
+#define COLOR_SLICE_G(color) ((color >> 8) & 0x000000FF)
+#define COLOR_SLICE_B(color) ((color >> 0) & 0x000000FF)
 
 // Low power mode put the device to sleep between LED updates to conserve energy
 // When in low power mode programming mode must be entered using the boot pads on the device
 // Recommend only enabling low power mode once development is complete
-#define LOW_POWER        0
+#define LOW_POWER        1
 
 // Define the update period of the display
 #define LOOP_DELAY_MS    33
 
-#define SHOW_ROTATION_DURATION     10000 // ms
-#define SHOW_TRANSITION_DURATION     5000 // ms
+#define SHOW_ROTATION_DURATION     (10 * 60 * 1000) // ms
+#define SHOW_TRANSITION_DURATION    2000 // ms
 
 //
 // Sleep schedule
@@ -50,13 +52,13 @@ unsigned long cum_sleep_time = 0;
 
 // ===========================================================================
 uint32_t Show_Rainbow_Bouncing_Dot(long time_ms, size_t light_index);
-uint32_t Show_Rainbow_Cycle(long time_ms, size_t light_index);
+uint32_t Show_Sparkle(long time_ms, size_t light_index);
 uint32_t Show_Pulse(long time_ms, size_t light_index);
 
 uint32_t (*SHOWS[]) (long time_ms, size_t light_index) = {
   Show_Rainbow_Bouncing_Dot,
-  // Show_Rainbow_Cycle,
-  // Show_Pulse,
+  Show_Pulse,
+  Show_Sparkle,
 };
 size_t SHOW_COUNT = sizeof(SHOWS) / sizeof(SHOWS[0]);
 
@@ -70,8 +72,12 @@ void setup() {
 
   // Connect the USB serial port for debuging
   USBDevice.attach();
-  Serial.begin(115200);
+  delay(1000);
+  Serial.begin(9600);
+  delay(1000);
+
   Serial.println("Starting Campy...");
+  Serial.flush();
 
   // Setup the LED strip and clear the color buffer initially
   strip.begin();
@@ -81,6 +87,9 @@ void setup() {
 
   last_pattern_start = millis();
   Setup_Shows();
+
+  Serial.println("Setup complete!");
+  Serial.println("==========================");
 }
 
 void loop() {
