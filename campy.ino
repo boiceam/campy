@@ -17,18 +17,20 @@
 // Low power mode put the device to sleep between LED updates to conserve energy
 // When in low power mode programming mode must be entered using the boot pads on the device
 // Recommend only enabling low power mode once development is complete
-#define LOW_POWER        1
+#define LOW_POWER        0
+
+#define TIME_DEBUG       0
 
 // Define the update period of the display
-#define LOOP_DELAY_MS    33
+#define LOOP_DELAY_MS   33
 
-#define SHOW_ROTATION_DURATION     (10 * 60 * 1000) // ms
-#define SHOW_TRANSITION_DURATION    2000 // ms
+#define SHOW_ROTATION_DURATION     (5 * 60 * 1000) // ms
+#define SHOW_TRANSITION_DURATION    (1000) // ms
 
 //
 // Sleep schedule
 //
-#define SLEEP_DELAY_MS          (12 * 1000) // ms
+#define SLEEP_DELAY_MS          (4 * 1000) // ms
 #define SLEEP_ON_DURATION       (10 * 60 * 60 * 1000) // ms
 #define SLEEP_DAY_DURATION      (24 * 60 * 60 * 1000) // ms
 // #define SLEEP_ON_DURATION       (60 * 1000) // ms        DEBUG!
@@ -52,13 +54,15 @@ unsigned long cum_sleep_time = 0;
 
 // ===========================================================================
 uint32_t Show_Rainbow_Bouncing_Dot(long time_ms, size_t light_index);
-uint32_t Show_Sparkle(long time_ms, size_t light_index);
+uint32_t Show_Flickering_Flame(long time_ms, size_t light_index);
 uint32_t Show_Pulse(long time_ms, size_t light_index);
+uint32_t Show_Sparkle(long time_ms, size_t light_index);
 
 uint32_t (*SHOWS[]) (long time_ms, size_t light_index) = {
+  // Show_Sparkle,
+  Show_Flickering_Flame,
   Show_Rainbow_Bouncing_Dot,
   Show_Pulse,
-  Show_Sparkle,
 };
 size_t SHOW_COUNT = sizeof(SHOWS) / sizeof(SHOWS[0]);
 
@@ -71,13 +75,16 @@ void setup() {
   digitalWrite(LED_BUILTIN, HIGH);
 
   // Connect the USB serial port for debuging
-  USBDevice.attach();
-  delay(1000);
-  Serial.begin(9600);
-  delay(1000);
+  #if !LOW_POWER
+    USBDevice.attach();
+    delay(1000);
 
-  Serial.println("Starting Campy...");
-  Serial.flush();
+    Serial.begin(9600);
+    delay(1000);
+
+    Serial.println("Starting Campy...");
+    Serial.flush();
+  #endif
 
   // Setup the LED strip and clear the color buffer initially
   strip.begin();
@@ -87,15 +94,34 @@ void setup() {
 
   last_pattern_start = millis();
   Setup_Shows();
-
-  Serial.println("Setup complete!");
-  Serial.println("==========================");
 }
 
 void loop() {
   // Get number of milliseconds passed since the Arduino board began running the current program.
   // This number will overflow after approximately 50 days.
-  unsigned long current_time_ms = millis() + cum_sleep_time;
+  unsigned long current_time_ms = (millis() + cum_sleep_time);
+
+  #if TIME_DEBUG
+    if (current_time_ms % 30000 < 200) {
+      strip.setPixelColor(0, strip.Color(0, 255, 0));
+      strip.show();
+
+      USBDevice.attach();
+      delay(1000);
+
+      Serial.begin(9600);
+      delay(1000);
+
+      Serial.println("current_time_ms: " + String(current_time_ms));
+      Serial.flush();
+
+      delay(5000);
+      USBDevice.detach();
+
+      strip.setPixelColor(0, strip.Color(0, 0, 0));
+      strip.show();
+    }
+  #endif
 
   // Run the light show for SLEEP_ON_DURATION, then sleep until SLEEP_DAY_DURATION
   unsigned long day_time_ms = current_time_ms % SLEEP_DAY_DURATION;
