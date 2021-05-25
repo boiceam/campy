@@ -8,6 +8,7 @@ void sleepFor(long sleep_time) {
   #if LOW_POWER
     Watchdog.reset();
     cum_sleep_time += sleep(sleep_time);
+    cum_sleep_time += LOOP_DELAY_MS_LOW_POWER - LOOP_DELAY_MS;
     Watchdog.disable();
   #else
     delay(sleep_time);

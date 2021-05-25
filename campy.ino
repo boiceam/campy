@@ -17,12 +17,13 @@
 // Low power mode put the device to sleep between LED updates to conserve energy
 // When in low power mode programming mode must be entered using the boot pads on the device
 // Recommend only enabling low power mode once development is complete
-#define LOW_POWER        0
+#define LOW_POWER        1
 
-#define TIME_DEBUG       0
+#define TIME_DEBUG       1
 
 // Define the update period of the display
 #define LOOP_DELAY_MS   33
+#define LOOP_DELAY_MS_LOW_POWER   49
 
 #define SHOW_ROTATION_DURATION     (5 * 60 * 1000) // ms
 #define SHOW_TRANSITION_DURATION    (1000) // ms
@@ -102,20 +103,22 @@ void loop() {
   unsigned long current_time_ms = (millis() + cum_sleep_time);
 
   #if TIME_DEBUG
-    if (current_time_ms % 30000 < 200) {
+    if (current_time_ms % 30000 < 1000) {
       strip.setPixelColor(0, strip.Color(0, 255, 0));
       strip.show();
-
+      
       USBDevice.attach();
       delay(1000);
 
       Serial.begin(9600);
-      delay(1000);
+      delay(4000);
 
-      Serial.println("current_time_ms: " + String(current_time_ms));
+      long mins = current_time_ms / 1000 / 60;
+      long secs = current_time_ms / 1000 % 60;
+      Serial.println("current_time_ms: " + String(mins) + "m " + String(secs) + "s");
+
       Serial.flush();
-
-      delay(5000);
+      delay(1000);
       USBDevice.detach();
 
       strip.setPixelColor(0, strip.Color(0, 0, 0));
