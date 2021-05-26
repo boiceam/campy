@@ -11,18 +11,16 @@
 #define LED_COUNT        10
 #define LED_BRIGHTNESS   100
 
-#define COLOR_SLICE_R(color) ((color >> 16) & 0x000000FF)
-#define COLOR_SLICE_G(color) ((color >> 8) & 0x000000FF)
-#define COLOR_SLICE_B(color) ((color >> 0) & 0x000000FF)
-
 // Low power mode put the device to sleep between LED updates to conserve energy
 // When in low power mode programming mode must be entered using the boot pads on the device
 // Recommend only enabling low power mode once development is complete
 #define LOW_POWER         1
-#define TIME_DEBUG        0
+#define TIME_DEBUG        1
+
+#define PROGRAMMING_WINDOW_MS       (20*1000) // ms
 
 // Define the update period of the display
-#define LOOP_DELAY_MS   33
+#define LOOP_DELAY_MS     33
 
 #define SHOW_ROTATION_DURATION      (15 * 60 * 1000) // ms
 #define SHOW_TRANSITION_DURATION    (5000) // ms
@@ -34,7 +32,7 @@
 #define SLEEP_ON_DURATION       (10) // hours
 
 // Constants
-#define PI        3.14
+#define PI                      3.14
 
 // Declare the NeoPixel strip object
 Adafruit_NeoPixel strip(LED_COUNT_ALL, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -44,6 +42,9 @@ RTCZero rtc;
 uint16_t loop_count = 0;
 unsigned long last_pattern_start = 0;
 unsigned long cum_sleep_time = 0;
+bool allow_deepsleep = false;
+bool usb_attached = false;
+unsigned long last_time_log = 0;
 
 // ===========================================================================
 uint32_t Show_Rainbow_Bouncing_Dot(long time_ms, size_t light_index);
@@ -62,21 +63,24 @@ size_t SHOW_COUNT = sizeof(SHOWS) / sizeof(SHOWS[0]);
 // ===========================================================================
 
 void setup() {
-  // Turn off the built-in status LED to save power
+  // Initialize the RTC, if power has been lost (POR or BOR) this will set the RTC to 1/1/00 00:00
+  // If power was not lost the previous time will be restored (though ~4 seconds may be lost)
+  rtc.begin();
+
+  // Turn on the built-in status LED intially
+  // After the programming window elaspes it will go off to save power
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, LOW);
 
-  // Connect the USB serial port for debuging
-  #if !LOW_POWER
-    USBDevice.attach();
-    delay(1000);
+  LoggingStart();
 
-    Serial.begin(9600);
-    delay(1000);
+  // Send the welcome message
+  SerialUSB.println("Starting Campy...");
+  SerialUSB.flush();
 
-    Serial.println("Starting Campy...");
-    Serial.flush();
-  #endif
+ #ifdef CRYSTALLESS
+  SerialUSB.println("CRYSTALLESS");
+#endif
 
   // Setup the LED strip and clear the color buffer initially
   strip.begin();
@@ -86,32 +90,32 @@ void setup() {
 
   last_pattern_start = millis();
   Setup_Shows();
-  rtc.begin();
 }
 
 void loop() {
+  // Check if our programming window has elasped and its time to start sleeping
+  if (!allow_deepsleep && millis() > PROGRAMMING_WINDOW_MS) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    allow_deepsleep = true;
+    LoggingStart();
+    SerialUSB.println("Allowing device to enter deep sleep");
+    LoggingStop();
+  }
+
   // Get number of milliseconds passed since the Arduino board began running the current program.
   // This number will overflow after approximately 50 days.
   unsigned long current_time_ms = (millis() + cum_sleep_time);
 
-  #if TIME_DEBUG
-    if (current_time_ms % 10000 < 100) {
-      USBDevice.attach();
-      delay(1000);
-
-      Serial.begin(9600);
-      delay(4000);
-
-      Serial.println(
-        "hours: " + String(rtc.getHours()) + 
-        ", mins..." + String(rtc.getMinutes()) + 
-        ", secs..." + String(rtc.getSeconds()));
-
-      Serial.flush();
-      delay(1000);
-      USBDevice.detach();
-    }
-  #endif
+#if TIME_DEBUG
+  if (last_time_log + (60*1000) < current_time_ms) {
+    last_time_log = current_time_ms;
+    LoggingStart();
+    char buf[20];
+    sprintf(buf, "%02d:%02d:%02d", rtc.getHours(), rtc.getMinutes(), rtc.getSeconds());
+    SerialUSB.println(buf);
+    LoggingStop();
+  }
+#endif
 
 
   // Run the light show for SLEEP_ON_DURATION, then sleep until SLEEP_DAY_DURATION
@@ -119,14 +123,14 @@ void loop() {
   if (!show_should_run) {
     strip.clear();
     strip.show();
-    sleepFor(SLEEP_DELAY_MS);
+    cum_sleep_time += sleepFor(SLEEP_DELAY_MS, allow_deepsleep);
     return;
   }
 
   unsigned long show_index = (current_time_ms / SHOW_ROTATION_DURATION) % SHOW_COUNT;
   float show_transition_fraction = min(1.,
-    max(0, ((int32_t)(current_time_ms % SHOW_ROTATION_DURATION) - (SHOW_ROTATION_DURATION - SHOW_TRANSITION_DURATION))) / (float)SHOW_TRANSITION_DURATION
-  );
+                                       max(0, ((int32_t)(current_time_ms % SHOW_ROTATION_DURATION) - (SHOW_ROTATION_DURATION - SHOW_TRANSITION_DURATION))) / (float)SHOW_TRANSITION_DURATION
+                                      );
   // Serial.println("show_index: " + String(show_index) + ", fraction..." + String(show_transition_fraction));
 
   // Update the color of the pixels in the buffer
@@ -146,5 +150,32 @@ void loop() {
   // send the color update to the LEDs
   strip.show();
 
-  sleepFor(LOOP_DELAY_MS);
+  cum_sleep_time += sleepFor(LOOP_DELAY_MS, allow_deepsleep);
+}
+
+void LoggingStart() {
+  if (!usb_attached) {
+    USBDevice.init();
+    USBDevice.attach();
+    // Delay to allow the connection to establish
+    delay(2000);
+    usb_attached = true;
+    
+    // Connect serial USB connection to allow for debugging
+    SerialUSB.begin(115200);
+  }
+}
+
+void LoggingStop() {
+  if(!allow_deepsleep){
+    return;
+  }
+  
+  if (usb_attached) {
+    SerialUSB.flush();
+    delay(100);
+    USBDevice.detach();
+    delay(100);
+    usb_attached = false;
+  }
 }

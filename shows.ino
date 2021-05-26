@@ -4,6 +4,9 @@
 #include <Adafruit_SleepyDog.h>
 #include <Adafruit_NeoPixel.h>
 
+#define COLOR_SLICE_R(color) ((color >> 16) & 0x000000FF)
+#define COLOR_SLICE_G(color) ((color >> 8) & 0x000000FF)
+#define COLOR_SLICE_B(color) ((color >> 0) & 0x000000FF)
 
 size_t GRADIENT_SIZE = LED_COUNT * 2;
 uint32_t RED_BLUE_COLORS[] = {
