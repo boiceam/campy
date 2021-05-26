@@ -16,6 +16,8 @@ uint32_t *GRADIENT_RED_BLUE;
 
 uint16_t sparkle_light_state[LED_COUNT];
 uint16_t sparkle_light_color[LED_COUNT];
+uint16_t sparkle_light_state2[LED_COUNT];
+uint16_t sparkle_light_color2[LED_COUNT];
 
 uint32_t Setup_Shows() {
   GRADIENT_RED_BLUE = get_grad_colors(RED_BLUE_COLORS, RED_BLUE_COLORS_SIZE, GRADIENT_SIZE);
@@ -23,6 +25,8 @@ uint32_t Setup_Shows() {
   for (size_t i = 0; i < LED_COUNT; ++i) {
     sparkle_light_color[i] = 0;
     sparkle_light_state[i] = 0;
+    sparkle_light_color2[i] = 0;
+    sparkle_light_state2[i] = 0;
   }
 }
 /////////////////////
@@ -77,10 +81,10 @@ uint32_t Show_Rainbow_Cycle(long time_ms, size_t light_index) {
   return GetWheelColor((time_ms / 25 + light_index * 2) % (256));
 }
 
-size_t Show_Pulse_Repeat_time = 2500;
+size_t Show_Pulse_Repeat_time = 2750;
 uint32_t Show_Pulse(long time_ms, size_t light_index) {
   uint16_t shift = time_ms / Show_Pulse_Repeat_time;
-  uint32_t color = GRADIENT_RED_BLUE[((light_index + shift) % GRADIENT_SIZE)];
+  uint32_t color = GRADIENT_RED_BLUE[((light_index + shift * 4) % GRADIENT_SIZE)];
   uint16_t r = COLOR_SLICE_R(color);
   uint16_t g = COLOR_SLICE_G(color);
   uint16_t b = COLOR_SLICE_B(color);
@@ -110,25 +114,28 @@ uint32_t Show_Flickering_Flame(long time_ms, size_t light_index) {
 
 uint32_t Show_Sparkle(long time_ms, size_t light_index) {
   for (size_t i = 0; i < LED_COUNT; ++i) {
-    sparkle_light_state[i] = max(((int32_t)sparkle_light_state[i]) *  0.999, 0);
+    sparkle_light_state2[i] = max(((int32_t)sparkle_light_state2[i]) *  0.999, 0);
   }
 
-  if (random(10000) <= 8 || (time_ms - last_light_time_ms) > 5750) {
+  if (random(10000) <= 32 || (time_ms - last_light_time_ms) > 2000) {
     size_t light_to_enable = random(LED_COUNT);
-    // if (sparkle_light_state[light_to_enable] == 0) {
-      sparkle_light_state[light_to_enable] = 255 * 255;
-      sparkle_light_color[light_to_enable] = random(5000, 9000);
-    // }
-    last_light_time_ms = time_ms;
+    if (sparkle_light_state2[light_to_enable] == 0) {
+      long rand = random(3);
+      sparkle_light_state2[light_to_enable] = 255 * 255;
+      sparkle_light_color2[light_to_enable] = 
+        rand == 0 ? random(40000, 47000) : 
+        random(33000, 38000);
+      last_light_time_ms = time_ms;
+    }
   }
 
-  if (sparkle_light_state[light_index] == 0) {
+  if (sparkle_light_state2[light_index] == 0) {
     return strip.ColorHSV(0 , 0, 0);    
   }
 
-  uint16_t b1 = sparkle_light_state[light_index] / 255;
-  uint32_t b = b1 > 255/2 ? (255 - b1)*2 : b1 * 2;
-  return strip.ColorHSV(sparkle_light_color[light_index], 255, b);
+  uint16_t b1 = sparkle_light_state2[light_index] / 255;
+  uint8_t b = b1 > 255/2 ? (255 - b1)*2 : b1 * 2;
+  return strip.ColorHSV(40000 + b*88, 255, b);
 }
 
 

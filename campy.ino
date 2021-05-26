@@ -4,6 +4,7 @@
 
 #include <Adafruit_SleepyDog.h>
 #include <Adafruit_NeoPixel.h>
+#include <RTCZero.h>
 
 #define LED_PIN          0
 #define LED_COUNT_ALL    20
@@ -17,37 +18,28 @@
 // Low power mode put the device to sleep between LED updates to conserve energy
 // When in low power mode programming mode must be entered using the boot pads on the device
 // Recommend only enabling low power mode once development is complete
-#define LOW_POWER        1
-
-#define TIME_DEBUG       1
+#define LOW_POWER         1
+#define TIME_DEBUG        0
 
 // Define the update period of the display
 #define LOOP_DELAY_MS   33
-#define LOOP_DELAY_MS_LOW_POWER   49
 
-#define SHOW_ROTATION_DURATION     (5 * 60 * 1000) // ms
-#define SHOW_TRANSITION_DURATION    (1000) // ms
+#define SHOW_ROTATION_DURATION      (15 * 60 * 1000) // ms
+#define SHOW_TRANSITION_DURATION    (5000) // ms
 
 //
 // Sleep schedule
 //
 #define SLEEP_DELAY_MS          (4 * 1000) // ms
-#define SLEEP_ON_DURATION       (10 * 60 * 60 * 1000) // ms
-#define SLEEP_DAY_DURATION      (24 * 60 * 60 * 1000) // ms
-// #define SLEEP_ON_DURATION       (60 * 1000) // ms        DEBUG!
-// #define SLEEP_DAY_DURATION      (144 * 1000) // ms       DEBUG!
+#define SLEEP_ON_DURATION       (10) // hours
 
 // Constants
 #define PI        3.14
 
-struct Color {
-  uint8_t  r;
-  uint8_t  g;
-  uint8_t  b;
-} color;
-
 // Declare the NeoPixel strip object
 Adafruit_NeoPixel strip(LED_COUNT_ALL, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+RTCZero rtc;
 
 uint16_t loop_count = 0;
 unsigned long last_pattern_start = 0;
@@ -60,15 +52,14 @@ uint32_t Show_Pulse(long time_ms, size_t light_index);
 uint32_t Show_Sparkle(long time_ms, size_t light_index);
 
 uint32_t (*SHOWS[]) (long time_ms, size_t light_index) = {
-  // Show_Sparkle,
-  Show_Flickering_Flame,
   Show_Rainbow_Bouncing_Dot,
   Show_Pulse,
+  Show_Flickering_Flame,
+  Show_Sparkle,
 };
 size_t SHOW_COUNT = sizeof(SHOWS) / sizeof(SHOWS[0]);
 
 // ===========================================================================
-
 
 void setup() {
   // Turn off the built-in status LED to save power
@@ -95,6 +86,7 @@ void setup() {
 
   last_pattern_start = millis();
   Setup_Shows();
+  rtc.begin();
 }
 
 void loop() {
@@ -103,33 +95,27 @@ void loop() {
   unsigned long current_time_ms = (millis() + cum_sleep_time);
 
   #if TIME_DEBUG
-    if (current_time_ms % 30000 < 1000) {
-      strip.setPixelColor(0, strip.Color(0, 255, 0));
-      strip.show();
-      
+    if (current_time_ms % 10000 < 100) {
       USBDevice.attach();
       delay(1000);
 
       Serial.begin(9600);
       delay(4000);
 
-      long mins = current_time_ms / 1000 / 60;
-      long secs = current_time_ms / 1000 % 60;
-      Serial.println("current_time_ms: " + String(mins) + "m " + String(secs) + "s");
+      Serial.println(
+        "hours: " + String(rtc.getHours()) + 
+        ", mins..." + String(rtc.getMinutes()) + 
+        ", secs..." + String(rtc.getSeconds()));
 
       Serial.flush();
       delay(1000);
       USBDevice.detach();
-
-      strip.setPixelColor(0, strip.Color(0, 0, 0));
-      strip.show();
     }
   #endif
 
+
   // Run the light show for SLEEP_ON_DURATION, then sleep until SLEEP_DAY_DURATION
-  unsigned long day_time_ms = current_time_ms % SLEEP_DAY_DURATION;
-  bool show_should_run = day_time_ms <= SLEEP_ON_DURATION;
-  
+  bool show_should_run = rtc.getHours() < SLEEP_ON_DURATION;
   if (!show_should_run) {
     strip.clear();
     strip.show();
